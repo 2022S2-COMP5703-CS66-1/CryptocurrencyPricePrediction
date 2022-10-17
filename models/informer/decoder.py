@@ -1,6 +1,6 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 
 class DecoderLayer(nn.Module):
     def __init__(self, self_attention, cross_attention, d_model, d_ff=None,
@@ -34,6 +34,7 @@ class DecoderLayer(nn.Module):
         y = self.dropout(self.conv2(y).transpose(-1,1))
 
         return self.norm3(x+y)
+
 
 class Decoder(nn.Module):
     def __init__(self, layers, norm_layer=None):
