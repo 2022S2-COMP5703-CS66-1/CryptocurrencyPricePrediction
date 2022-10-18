@@ -66,6 +66,7 @@ class Trainer:
     def __init__(self, data_file_path,
                  conv_trans=False,
                  trend_loss=False,
+                 trend_c=0.1,
                  pattern_embedding=False,
                  tanh_position_encoding=False,
                  learning_rate=5e-3,
@@ -174,7 +175,7 @@ class Trainer:
         self.train_data_loader = DataLoader(self.train_data_set, batch_size=batch_size)
         self.test_data_loader = DataLoader(self.test_data_set, batch_size=batch_size)
 
-        self.criterion = TrendLoss() if trend_loss else torch.nn.MSELoss()
+        self.criterion = TrendLoss(trend_c) if trend_loss else torch.nn.MSELoss()
         self.optimizer = None
         if optim == 'adamw':
             self.optimizer = torch.optim.AdamW(self.model.parameters(),
