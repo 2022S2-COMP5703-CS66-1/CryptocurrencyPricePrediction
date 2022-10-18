@@ -1,10 +1,8 @@
-cd
-
-git clone -b dev-Transformer https://github.com/2022S2-COMP5703-CS66-1/CryptocurrencyPricePrediction.git
+cd ~/CryptocurrencyPricePrediction
 
 mkdir data
 
-rsync -rt /rds/PRJ-Crypto_S22_22/* ~/data
+rsync -rt /rds/PRJ-Crypto_S22_22/* ~/CryptocurrencyPricePrediction/data
 
 module load python/3.8.2 magma/2.5.3
 
