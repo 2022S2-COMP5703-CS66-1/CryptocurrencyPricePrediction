@@ -101,7 +101,7 @@ class Trainer:
                  out_history=True,
                  save_model=True,
                  random_state=0,
-                 low_memory=True):
+                 low_memory=False):
 
         torch.manual_seed(random_state)
         torch.cuda.manual_seed_all(random_state)
@@ -197,7 +197,8 @@ class Trainer:
 
         self.epoch = epoch
         self.epoch_history = pd.DataFrame(columns=[f"Train({self.criterion.__class__.__name__})",
-                                                   f"Test({self.criterion.__class__.__name__})"])
+                                                   f"Test({self.criterion.__class__.__name__})"],
+                                          dtype=object)
         self.step_train_history = []
         self.step_test_history = []
         self.save_model = save_model
