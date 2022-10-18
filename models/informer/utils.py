@@ -81,9 +81,9 @@ class Trainer:
                  lr_decay_round=50,
                  in_dim=59,
                  out_dim=1,
-                 pred_len=84,
-                 seq_len=168,
-                 label_len=84,
+                 pred_len=168,
+                 seq_len=336,
+                 label_len=168,
                  n_heads=4,
                  dilation_n_hidden=2,
                  dropout=0.,
@@ -99,7 +99,8 @@ class Trainer:
                  log=True,
                  out_history=True,
                  save_model=True,
-                 random_state=0):
+                 random_state=0,
+                 low_memory=True):
 
         torch.manual_seed(random_state)
         torch.cuda.manual_seed_all(random_state)
@@ -141,7 +142,8 @@ class Trainer:
                        "log": log,
                        "out_history": out_history,
                        "save_model": save_model,
-                       "random_state": random_state}
+                       "random_state": random_state,
+                       "low_memory": low_memory}
 
         self.model = Informer(
             conv_trans=conv_trans,
@@ -201,10 +203,13 @@ class Trainer:
         self.log = log
         self.out_history = out_history
         self.verbose = verbose
+        self.low_memory = low_memory
 
     def train(self):
         best_model = None
         for e in range(self.epoch):
+            if self.low_memory:
+                torch.cuda.empty_cache()
             self.model.train()
             epoch_history = []
             for enc_in, dec_in, y in tqdm(self.train_data_loader):
@@ -256,6 +261,8 @@ class Trainer:
 
     def eval(self):
         self.model.eval()
+        if self.low_memory:
+            torch.cuda.empty_cache()
         history = []
         with torch.no_grad():
             for enc_in, dec_in, y in self.test_data_loader:
