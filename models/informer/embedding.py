@@ -58,15 +58,16 @@ class DataEmbedding(nn.Module):
     def __init__(self, c_in, d_model, dropout=0.1, pattern_embedding=False, positional_embedding='trigon'):
         super(DataEmbedding, self).__init__()
 
-        self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
-        self.position_embedding = PositionalEmbedding(d_model=d_model, mode=positional_embedding)
         self.pattern_embedding = PatternEmbedding(c_in=c_in, kernel_size=pattern_embedding) \
             if pattern_embedding else None
+        self.value_embedding = TokenEmbedding(c_in=c_in + 1, d_model=d_model)
+        self.position_embedding = PositionalEmbedding(d_model=d_model, mode=positional_embedding)
 
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x):
-        x = self.value_embedding(x) + self.position_embedding(x)
         if self.pattern_embedding is not None:
             x = self.pattern_embedding(x)
+        x = self.value_embedding(x) + self.position_embedding(x)
+
         return self.dropout(x)
