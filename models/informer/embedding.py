@@ -60,7 +60,7 @@ class DataEmbedding(nn.Module):
 
         self.pattern_embedding = PatternEmbedding(c_in=c_in, kernel_size=pattern_embedding) \
             if pattern_embedding else None
-        self.value_embedding = TokenEmbedding(c_in=c_in + 1, d_model=d_model)
+        self.value_embedding = TokenEmbedding(c_in=c_in + 1 if pattern_embedding else c_in, d_model=d_model)
         self.position_embedding = PositionalEmbedding(d_model=d_model, mode=positional_embedding)
 
         self.dropout = nn.Dropout(p=dropout)
