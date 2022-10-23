@@ -145,7 +145,8 @@ class Trainer:
                        "out_history": out_history,
                        "save_model": save_model,
                        "random_state": random_state,
-                       "low_memory": low_memory}
+                       "low_memory": low_memory,
+                       "model": model if model is not None else "new"}
 
         self.model = Informer(
             conv_trans=conv_trans,
