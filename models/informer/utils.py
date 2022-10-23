@@ -101,7 +101,8 @@ class Trainer:
                  out_history=True,
                  save_model=True,
                  random_state=0,
-                 low_memory=False):
+                 low_memory=False,
+                 model=None):
 
         torch.manual_seed(random_state)
         torch.cuda.manual_seed_all(random_state)
@@ -162,7 +163,7 @@ class Trainer:
             e_layers=enc_num,
             d_layers=dec_num,
             positional_embedding='tanh' if tanh_position_encoding else 'trigon'
-        ).to(device)
+        ).to(device) if model is None else torch.load(model).to(device)
 
         df = pd.read_csv(data_file_path)
         df['DateTime'] = pd.to_datetime(df['DateTime'])
@@ -176,6 +177,7 @@ class Trainer:
         self.test_data_loader = DataLoader(self.test_data_set, batch_size=batch_size)
 
         self.criterion = TrendLoss(trend_c) if trend_loss else torch.nn.MSELoss()
+        self.metirc = torch.nn.MSELoss()
         self.optimizer = None
         if optim == 'adamw':
             self.optimizer = torch.optim.AdamW(self.model.parameters(),
@@ -269,6 +271,6 @@ class Trainer:
         with torch.no_grad():
             for enc_in, dec_in, y in self.test_data_loader:
                 yhat = self.model(enc_in, dec_in)
-                loss = self.criterion(yhat, y)
+                loss = self.metirc(yhat, y)
                 history.append(loss.cpu().detach().item())
         return np.mean(history), history
