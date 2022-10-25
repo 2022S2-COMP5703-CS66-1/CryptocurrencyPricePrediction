@@ -171,7 +171,7 @@ class Trainer:
             e_layers=enc_num,
             d_layers=dec_num,
             positional_embedding='tanh' if tanh_position_encoding else 'trigon'
-        ).to(device) if model is None else (torch.load(model).to(device) if type(model) == str else model)
+        ).to(device) if model is None else (torch.load(model).to(device) if type(model) == str else model.to(device))
 
         df = pd.read_csv(data_file_path)
         df['DateTime'] = pd.to_datetime(df['DateTime'])
