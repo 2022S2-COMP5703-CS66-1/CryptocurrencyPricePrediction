@@ -107,7 +107,14 @@ class Trainer:
         torch.manual_seed(random_state)
         torch.cuda.manual_seed_all(random_state)
         np.random.seed(random_state)
-
+        
+        if model is None:
+            model_name = "Informer_new"
+        elif type(model) == str:
+            model_name = model
+        else:
+            model_name = model.__class__.__name__
+            
         self.params = {"data_file_path": data_file_path,
                        "conv_trans": conv_trans,
                        "trend_loss": trend_loss,
@@ -146,7 +153,7 @@ class Trainer:
                        "save_model": save_model,
                        "random_state": random_state,
                        "low_memory": low_memory,
-                       "model": model if model is not None else "new"}
+                       "model": model_name}
 
         self.model = Informer(
             conv_trans=conv_trans,
