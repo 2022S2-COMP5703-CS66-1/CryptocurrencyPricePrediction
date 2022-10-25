@@ -102,7 +102,8 @@ class Trainer:
                  save_model=True,
                  random_state=0,
                  low_memory=False,
-                 model=None):
+                 model=None,
+                 sentiment=True):
 
         torch.manual_seed(random_state)
         torch.cuda.manual_seed_all(random_state)
@@ -153,7 +154,8 @@ class Trainer:
                        "save_model": save_model,
                        "random_state": random_state,
                        "low_memory": low_memory,
-                       "model": model_name}
+                       "model": model_name,
+                       "sentiment": sentiment}
 
         self.model = Informer(
             conv_trans=conv_trans,
@@ -174,6 +176,15 @@ class Trainer:
         ).to(device) if model is None else (torch.load(model).to(device) if type(model) == str else model.to(device))
 
         df = pd.read_csv(data_file_path)
+        
+        if not sentiment:
+            df["sentiment_score"] = 0
+            df["sentiment_value"] = 0
+            df["positive_tweet_count"] = 0
+            df["negative_tweet_count"] = 0
+            df["neutral_tweet_count"] = 0
+            df["total_tweet_count"] = 0
+        
         df['DateTime'] = pd.to_datetime(df['DateTime'])
         train_df = df[df["DateTime"] < train_end_date].drop(["DateTime"], axis=1)
         test_df = df[df["DateTime"] >= test_begin_date].drop(["DateTime"], axis=1)
