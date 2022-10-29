@@ -6,7 +6,9 @@ import copy
 import json
 import os
 from tqdm import tqdm
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, ConcatDataset, SubsetRandomSampler
+from sklearn.model_selection import KFold
+from copy import deepcopy
 
 from models.informer.model import Informer
 from models.informer.trendloss import TrendLoss
@@ -36,6 +38,10 @@ class BTCDataSet(Dataset):
 
         return enc_in, dec_in, y
 
+    def __add__(self, other):
+        self.x = torch.cat((self.x, other.x))
+        return self
+
 
 class EarlyStopping:
 
@@ -56,6 +62,9 @@ class EarlyStopping:
             self.counter += 1
             return self.counter <= self.tolerance, False
 
+    def reset(self):
+        self.__init__(self.tolerance)
+
 
 def _pass(criterion):
     return True
@@ -71,7 +80,7 @@ class Trainer:
                  tanh_position_encoding=False,
                  learning_rate=5e-3,
                  batch_size=128,
-                 epoch=5,
+                 epoch=10,
                  optim="adamw",
                  weight_decay=.01,
                  betas=(0.9, 0.999),
@@ -103,19 +112,20 @@ class Trainer:
                  random_state=0,
                  low_memory=False,
                  model=None,
-                 sentiment=True):
+                 sentiment=True,
+                 cv=5):
 
         torch.manual_seed(random_state)
         torch.cuda.manual_seed_all(random_state)
         np.random.seed(random_state)
-        
+
         if model is None:
             model_name = "Informer_new"
         elif type(model) == str:
             model_name = model
         else:
             model_name = model.__class__.__name__
-            
+
         self.params = {"data_file_path": data_file_path,
                        "conv_trans": conv_trans,
                        "trend_loss": trend_loss,
@@ -155,7 +165,8 @@ class Trainer:
                        "random_state": random_state,
                        "low_memory": low_memory,
                        "model": model_name,
-                       "sentiment": sentiment}
+                       "sentiment": sentiment,
+                       "cv": cv}
 
         self.model = Informer(
             conv_trans=conv_trans,
@@ -176,7 +187,7 @@ class Trainer:
         ).to(device) if model is None else (torch.load(model).to(device) if type(model) == str else model.to(device))
 
         df = pd.read_csv(data_file_path)
-        
+
         if not sentiment:
             df["sentiment_score"] = 0
             df["sentiment_value"] = 0
@@ -184,7 +195,7 @@ class Trainer:
             df["negative_tweet_count"] = 0
             df["neutral_tweet_count"] = 0
             df["total_tweet_count"] = 0
-        
+
         df['DateTime'] = pd.to_datetime(df['DateTime'])
         train_df = df[df["DateTime"] < train_end_date].drop(["DateTime"], axis=1)
         test_df = df[df["DateTime"] >= test_begin_date].drop(["DateTime"], axis=1)
@@ -195,24 +206,14 @@ class Trainer:
         self.train_data_loader = DataLoader(self.train_data_set, batch_size=batch_size)
         self.test_data_loader = DataLoader(self.test_data_set, batch_size=batch_size)
 
+        if cv > 1:
+            self.dataset = ConcatDataset([self.train_data_set, self.test_data_set])
+            self.cv_indices = KFold(n_splits=cv, shuffle=True, random_state=random_state).split(self.dataset)
+            self.cv_history = {}
+
         self.criterion = TrendLoss(trend_c) if trend_loss else torch.nn.MSELoss()
         self.metirc = torch.nn.MSELoss()
-        self.optimizer = None
-        if optim == 'adamw':
-            self.optimizer = torch.optim.AdamW(self.model.parameters(),
-                                               lr=learning_rate,
-                                               betas=betas,
-                                               weight_decay=weight_decay)
-        elif optim == 'sgd':
-            self.optimizer = torch.optim.SGD(self.model.parameters(),
-                                             lr=learning_rate,
-                                             momentum=momentum,
-                                             weight_decay=weight_decay)
-
-        self.lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer,
-                                                                       mode='min',
-                                                                       factor=lr_decay,
-                                                                       patience=lr_decay_round)
+        self.optimizer, self.lr_scheduler = self._get_new_optims(self.model)
 
         self.early_stopping = EarlyStopping(tolerance=tolerance) if early_stopping else _pass
 
@@ -228,7 +229,96 @@ class Trainer:
         self.verbose = verbose
         self.low_memory = low_memory
 
+    def cv(self):
+        torch.cuda.empty_cache()
+        best_model = None
+        best_score = float('inf')
+        cv_history = pd.DataFrame(columns=[f"BestTestScore({self.criterion.__class__.__name__})"],
+                                  dtype=object)
+
+        time_stamp = datetime.datetime.now().strftime('%Y_%m_%d_%H:%M:%S')
+        if not os.path.exists(time_stamp):
+            os.makedirs(time_stamp)
+
+        for k, (train_idx, test_idx) in enumerate(self.cv_indices):
+            print(f"FOLD{k}")
+            self.early_stopping.reset()
+            model = deepcopy(self.model)
+            optimizer, lr_scheduler = self._get_new_optims(model)
+            train_sampler = SubsetRandomSampler(train_idx)
+            test_sampler = SubsetRandomSampler(test_idx)
+            train_loader = DataLoader(self.dataset, batch_size=self.params['batch_size'], sampler=train_sampler)
+            test_loader = DataLoader(self.dataset, batch_size=self.params['batch_size'], sampler=test_sampler)
+            fold_history = pd.DataFrame(columns=[f"Train({self.criterion.__class__.__name__})",
+                                                 f"Test({self.criterion.__class__.__name__})"],
+                                        dtype=object)
+            fold_best_model = None
+            fold_best_score = None
+
+            for e in range(self.epoch):
+                torch.cuda.empty_cache()
+                model.train()
+                epoch_history = []
+                for enc_in, dec_in, y in tqdm(train_loader):
+                    optimizer.zero_grad()
+                    yhat = model(enc_in, dec_in)
+                    loss = self.criterion(yhat, y)
+                    loss.backward()
+                    optimizer.step()
+                    lr_scheduler.step(loss)
+                    epoch_history.append(loss.cpu().detach().item())
+
+                epoch_loss = np.mean(epoch_history)
+                test_loss, _ = self.eval(model, test_loader)
+
+                fold_history.loc[f"Epoch {e + 1}"] = [epoch_loss, test_loss]
+                if self.verbose:
+                    print(f"Epoch {e + 1}: Train Loss: {epoch_loss} Test Loss: {test_loss}")
+
+                go_on, is_best = self.early_stopping(test_loss)
+
+                if not go_on:
+                    break
+
+                if is_best:
+                    fold_best_model = copy.deepcopy(model)
+                    fold_best_score = test_loss
+
+            if fold_best_score < best_score:
+                best_model = fold_best_model
+                best_score = fold_best_score
+
+            cv_history.loc[f"Fold{k}"] = fold_best_score
+
+            fold_history.to_csv(os.path.join(time_stamp, f"FOLD{k}.csv"))
+        if self.log:
+            with open(os.path.join(time_stamp, "config.json"), 'w') as f:
+                f.write(json.dumps(self.params))
+        if self.save_model:
+            torch.save(best_model.cpu(), os.path.join(time_stamp, "Model.pt"))
+        cv_history.loc["Average"] = cv_history.iloc[:, 0].mean()
+        cv_history.to_csv(os.path.join(time_stamp, f"CV.csv"))
+
+    def _get_new_optims(self, model):
+        if self.params["optim"] == 'adamw':
+            optimizer = torch.optim.AdamW(model.parameters(),
+                                          lr=self.params["learning_rate"],
+                                          betas=self.params["betas"],
+                                          weight_decay=self.params["weight_decay"])
+        else:
+            optimizer = torch.optim.SGD(model.parameters(),
+                                        lr=self.params['learning_rate'],
+                                        momentum=self.params['momentum'],
+                                        weight_decay=self.params['weight_decay'])
+
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,
+                                                                  mode='min',
+                                                                  factor=self.params['lr_decay'],
+                                                                  patience=self.params['lr_decay_round'])
+        return optimizer, lr_scheduler
+
     def train(self):
+        self.early_stopping.reset()
         best_model = None
         for e in range(self.epoch):
             if self.low_memory:
@@ -245,7 +335,7 @@ class Trainer:
                 epoch_history.append(loss.cpu().detach().item())
             epoch_loss = np.mean(epoch_history)
 
-            test_loss, test_loss_step_history = self.eval()
+            test_loss, test_loss_step_history = self.eval(self.model, self.test_data_loader)
 
             self.epoch_history.loc[f"Epoch {e + 1}"] = [epoch_loss, test_loss]
             self.step_train_history += epoch_history
@@ -282,14 +372,14 @@ class Trainer:
     def __call__(self, *args):
         return self.model(*args)
 
-    def eval(self):
-        self.model.eval()
+    def eval(self, model, loader):
+        model.eval()
         if self.low_memory:
             torch.cuda.empty_cache()
         history = []
         with torch.no_grad():
-            for enc_in, dec_in, y in self.test_data_loader:
-                yhat = self.model(enc_in, dec_in)
+            for enc_in, dec_in, y in loader:
+                yhat = model(enc_in, dec_in)
                 loss = self.metirc(yhat, y)
                 history.append(loss.cpu().detach().item())
         return np.mean(history), history
