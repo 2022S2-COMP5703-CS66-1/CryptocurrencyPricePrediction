@@ -113,7 +113,7 @@ class Trainer:
                  low_memory=False,
                  model=None,
                  sentiment=True,
-                 cv=3):
+                 cv=5):
 
         torch.manual_seed(random_state)
         torch.cuda.manual_seed_all(random_state)
