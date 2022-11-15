@@ -80,7 +80,7 @@ class Trainer:
                  tanh_position_encoding=False,
                  learning_rate=5e-3,
                  batch_size=128,
-                 epoch=10,
+                 epoch=20,
                  optim="adamw",
                  weight_decay=.01,
                  betas=(0.9, 0.999),
