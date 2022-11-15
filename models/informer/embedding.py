@@ -46,7 +46,7 @@ class PatternEmbedding(nn.Module):
     def __init__(self, c_in, kernel_size):
         super(PatternEmbedding, self).__init__()
         self.patternConv = nn.Conv1d(in_channels=c_in, out_channels=1,
-                                     kernel_size=kernel_size, padding='same', padding_mode='circular')
+                                     kernel_size=kernel_size, padding='same')
 
     def forward(self, x):
         pattern_f = self.patternConv(x.permute(0, 2, 1)).transpose(1, 2)

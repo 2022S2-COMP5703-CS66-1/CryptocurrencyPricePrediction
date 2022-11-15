@@ -1,15 +1,15 @@
 import torch.nn as nn
-import torch.nn.functional as F
+# import torch.nn.functional as F
 
 
-class Truncater(nn.Module):
-    def __init__(self, padding: int):
-        super(Truncater, self).__init__()
-        self.padding = padding
-
-    def forward(self, x):
-        x = x[:, :, :-self.padding].contiguous()
-        return x
+# class Truncater(nn.Module):
+#     def __init__(self, padding: int):
+#         super(Truncater, self).__init__()
+#         self.padding = padding
+#
+#     def forward(self, x):
+#         x = x[:, :, :-self.padding].contiguous()
+#         return x
 
 
 class CasualConv(nn.Module):
@@ -18,13 +18,14 @@ class CasualConv(nn.Module):
         hiddens = []
         for i in range(n_hidden):
             d = 2 ** i
-            padding = (kernel_size - 1) * d
+            # padding = (kernel_size - 1) * d
             hiddens.append(nn.Conv1d(in_channels=c_in,
                                      out_channels=c_in,
                                      kernel_size=kernel_size,
-                                     padding=padding,
+                                     # padding=padding,
+                                     padding='same',
                                      dilation=d))
-            hiddens.append(Truncater(padding))
+            # hiddens.append(Truncater(padding))
             hiddens.append(activation())
             hiddens.append(nn.Dropout(p=dropout))
         del hiddens[-1]

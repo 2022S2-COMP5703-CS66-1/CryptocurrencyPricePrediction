@@ -87,7 +87,7 @@ class Trainer:
                  momentum=0.9,
                  early_stopping=True,
                  tolerance=2,
-                 lr_decay=0.5,
+                 lr_decay=0.98,
                  lr_decay_round=50,
                  in_dim=59,
                  out_dim=1,
@@ -113,7 +113,7 @@ class Trainer:
                  low_memory=False,
                  model=None,
                  sentiment=True,
-                 cv=5):
+                 cv=3):
 
         torch.manual_seed(random_state)
         torch.cuda.manual_seed_all(random_state)
@@ -206,8 +206,9 @@ class Trainer:
         self.train_data_loader = DataLoader(self.train_data_set, batch_size=batch_size)
         self.test_data_loader = DataLoader(self.test_data_set, batch_size=batch_size)
 
-        if cv > 1:
-            self.dataset = ConcatDataset([self.train_data_set, self.test_data_set])
+        self.dataset = ConcatDataset([self.train_data_set, self.test_data_set])
+
+        if cv >= 1:
             self.cv_indices = KFold(n_splits=cv, shuffle=True, random_state=random_state).split(self.dataset)
             self.cv_history = {}
 
@@ -265,7 +266,6 @@ class Trainer:
                     loss = self.criterion(yhat, y)
                     loss.backward()
                     optimizer.step()
-                    lr_scheduler.step(loss)
                     epoch_history.append(loss.cpu().detach().item())
 
                 epoch_loss = np.mean(epoch_history)
@@ -276,6 +276,8 @@ class Trainer:
                     print(f"Epoch {e + 1}: Train Loss: {epoch_loss} Test Loss: {test_loss}")
 
                 go_on, is_best = self.early_stopping(test_loss)
+
+                lr_scheduler.step()
 
                 if not go_on:
                     break
@@ -311,10 +313,9 @@ class Trainer:
                                         momentum=self.params['momentum'],
                                         weight_decay=self.params['weight_decay'])
 
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,
-                                                                  mode='min',
-                                                                  factor=self.params['lr_decay'],
-                                                                  patience=self.params['lr_decay_round'])
+        lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,
+                                                              gamma=self.params['lr_decay'],
+                                                              verbose=True)
         return optimizer, lr_scheduler
 
     def train(self):
@@ -331,7 +332,6 @@ class Trainer:
                 loss = self.criterion(yhat, y)
                 loss.backward()
                 self.optimizer.step()
-                self.lr_scheduler.step(loss)
                 epoch_history.append(loss.cpu().detach().item())
             epoch_loss = np.mean(epoch_history)
 
@@ -343,6 +343,8 @@ class Trainer:
 
             if self.verbose:
                 print(f"Epoch {e + 1}: Train Loss: {epoch_loss} Test Loss: {test_loss}")
+
+            self.lr_scheduler.step()
 
             go_on, is_best = self.early_stopping(test_loss)
 
@@ -383,3 +385,32 @@ class Trainer:
                 loss = self.metirc(yhat, y)
                 history.append(loss.cpu().detach().item())
         return np.mean(history), history
+
+    def make_prediction(self):
+
+        def batch_to_seq(batch):  # (nbatch, batchsize, pred, 1)
+            concatenated = np.concatenate(batch, axis=0)  # (num_window, pred_len, 1)
+            seq = np.concatenate((concatenated[0, :-1, :], concatenated[:, -1, :])).reshape(-1)
+            return seq
+
+        self.model.eval()
+        dataloader = DataLoader(self.dataset, batch_size=self.params["batch_size"])
+        out = []
+        y = []
+        with torch.no_grad():
+            for enc_in, dec_in, ytrue in dataloader:
+                out.append(self.model(enc_in, dec_in).cpu().numpy())
+                y.append(ytrue.cpu().numpy())
+        out = batch_to_seq(out)
+        out = np.concatenate((np.zeros(self.params["seq_len"]), out))
+        y = batch_to_seq(y)
+
+        return out, y
+
+    def plot_prediction(self):
+        out, y = self.make_prediction()
+        import matplotlib.pyplot as plt
+        plt.plot(np.arange(len(out)), out, label="pred")
+        plt.plot(np.arange(len(y)), y, label='true')
+        plt.legend()
+        plt.show()
