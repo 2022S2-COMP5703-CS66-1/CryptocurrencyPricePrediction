@@ -15,7 +15,9 @@ from models.informer.trendloss import TrendLoss
 
 
 class BTCDataSet(Dataset):
-
+    """
+    A data set object to generate window from raw data.
+    """
     def __init__(self, array, seq_len, pred_len, label_len, device):
         self.seq_len = seq_len
         self.pred_len = pred_len
@@ -44,7 +46,6 @@ class BTCDataSet(Dataset):
 
 
 class EarlyStopping:
-
     def __init__(self, tolerance=2):
         self.best = None
         self.counter = 0
@@ -67,11 +68,24 @@ class EarlyStopping:
 
 
 def _pass(criterion):
+    """
+    A placeholder object used for no criterion.
+    """
     return True
 
 
 class Trainer:
+    """
+    Helper object to process training, testing and predicting.
+    Use this object with the desired hyper-parameter and pre-processed data file to initialize the model.
+    Use class method train() or cv() to process train and cross-validation correspondingly.
+    Example:
+        trainer = Trainer("data/hourlyData.csv", conv_trans=True, epoch=20)
+        trainer.train()
 
+    The result and best model during the train will be stored at the same folder within a subfolder named by the
+    time stamp of when the training has terminated.
+    """
     def __init__(self, data_file_path,
                  conv_trans=False,
                  trend_loss=False,
@@ -231,6 +245,10 @@ class Trainer:
         self.low_memory = low_memory
 
     def cv(self):
+        """
+        Process the K-fold cross-validation.
+        K is defined in the constructor.
+        """
         torch.cuda.empty_cache()
         best_model = None
         best_score = float('inf')
@@ -319,6 +337,10 @@ class Trainer:
         return optimizer, lr_scheduler
 
     def train(self):
+        """
+        Process the training with the hyper-parameters defined in the constructor.
+        :return:
+        """
         self.early_stopping.reset()
         best_model = None
         for e in range(self.epoch):
@@ -375,6 +397,12 @@ class Trainer:
         return self.model(*args)
 
     def eval(self, model, loader):
+        """
+        Evaluate the model on the testset.
+        :param model: Model need to be evaluated.
+        :param loader: Dataloader object.
+        :return: Overall test loss and step loss history.
+        """
         model.eval()
         if self.low_memory:
             torch.cuda.empty_cache()
@@ -387,7 +415,11 @@ class Trainer:
         return np.mean(history), history
 
     def make_prediction(self):
-
+        """
+        Use the trained model to generate prediction on the entire dataset.
+        Must train the model at first or load a trained model.
+        :return: Model prediction and the ground truth.
+        """
         def batch_to_seq(batch):  # (nbatch, batchsize, pred, 1)
             concatenated = np.concatenate(batch, axis=0)  # (num_window, pred_len, 1)
             seq = np.concatenate((concatenated[0, :-1, :], concatenated[:, -1, :])).reshape(-1)
@@ -408,6 +440,10 @@ class Trainer:
         return out, y
 
     def plot_prediction(self):
+        """
+        Plot the model prediction along with the ground truth.
+        :return: None
+        """
         out, y = self.make_prediction()
         import matplotlib.pyplot as plt
         plt.plot(np.arange(len(out)), out, label="pred")

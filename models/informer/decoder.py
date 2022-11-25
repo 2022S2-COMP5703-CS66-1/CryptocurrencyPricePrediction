@@ -3,6 +3,9 @@ import torch.nn.functional as F
 
 
 class DecoderLayer(nn.Module):
+    """
+    Decoder layer from the original Informer
+    """
     def __init__(self, self_attention, cross_attention, d_model, d_ff=None,
                  dropout=0.1, activation="relu"):
         super(DecoderLayer, self).__init__()

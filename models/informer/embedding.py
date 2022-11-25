@@ -5,12 +5,17 @@ import math
 
 
 class PositionalEmbedding(nn.Module):
+    """
+    Sine and Cosine positional embedding from the original Transformer.
+    We have implanted an option to use the tanh positional encoding.
+    """
     def __init__(self, d_model, max_len=2000, mode="trigon", lambdda=0.1):
         super(PositionalEmbedding, self).__init__()
         # Compute the positional encodings once in log space.
         pe = torch.zeros(max_len, d_model).float()
         pe.require_grad = False
         position = torch.arange(0, max_len).float().unsqueeze(1)
+        # Calculation and keep the positional encoding sequence.
         if mode == 'trigon':
             div_term = (torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)).exp()
 
@@ -28,6 +33,9 @@ class PositionalEmbedding(nn.Module):
 
 
 class TokenEmbedding(nn.Module):
+    """
+    Token embedding from the original Informer.
+    """
     def __init__(self, c_in, d_model):
         super(TokenEmbedding, self).__init__()
         padding = 1 if torch.__version__ >= '1.5.0' else 2
@@ -43,6 +51,10 @@ class TokenEmbedding(nn.Module):
 
 
 class PatternEmbedding(nn.Module):
+    """
+    Pattern Embedding operator.
+    Generate a new dimension of the raw feature map including the pattern information collected from the convolution.
+    """
     def __init__(self, c_in, kernel_size):
         super(PatternEmbedding, self).__init__()
         self.patternConv = nn.Conv1d(in_channels=c_in, out_channels=1,
@@ -51,10 +63,15 @@ class PatternEmbedding(nn.Module):
     def forward(self, x):
         pattern_f = self.patternConv(x.permute(0, 2, 1)).transpose(1, 2)
         x = torch.cat((x, pattern_f), 2)
+        # Instead of including the generated information into the raw feature map,
+        # we keep them into a new dimension to minimize the chance of interrupting the information in the raw data.
         return x
 
 
 class DataEmbedding(nn.Module):
+    """
+    The Embedding layer including all three types of embedding.
+    """
     def __init__(self, c_in, d_model, dropout=0.1, pattern_embedding=False, positional_embedding='trigon'):
         super(DataEmbedding, self).__init__()
 

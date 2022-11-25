@@ -3,7 +3,11 @@ import torch.nn.functional as F
 
 
 class TrendLoss(torch.nn.Module):
-
+    """
+    Trend loss operator.
+    It is using MSE as the base loss and apply extra punishment to the model
+    when the model gives the prediction in the wrong trend.
+    """
     def __init__(self, c=0.1, back_bone=F.mse_loss, eps=1e-8):
         super(TrendLoss, self).__init__()
         self.c = c
